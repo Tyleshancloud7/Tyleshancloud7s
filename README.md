@@ -8,7 +8,7 @@ I’m a member of **Josh Madakor’s Cyber Range**, where you can gain hands-on 
 - 📚 **Courses Available**: Vulnerability Management, Threat Hunting, and Incident Response.  
 - 🎙️ Plus, weekly live sessions to ask questions or chat about IT/Cyber careers!  
 
-**[Sign up now before space runs out!](https://www.skool.com/signup?ref=f706916b476e4d409d70226d66675818)
+[Sign up now before space runs out!](https://www.skool.com/signup?ref=f706916b476e4d409d70226d66675818)
 
 
 
