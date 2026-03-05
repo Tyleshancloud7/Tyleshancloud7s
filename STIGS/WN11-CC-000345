@@ -1,0 +1,101 @@
+<#
+.SYNOPSIS
+    This PowerShell script remediates DISA STIG finding WN11-CC-000345 by disabling WinRM Basic authentication.
+
+.NOTES
+    Author          : Tylesha Alexander
+    LinkedIn        : linkedin.com/in/tyleshaa/
+    GitHub          : github.com/tyleshancloud7
+    Date Created    : 2026-03-05
+    Last Modified   : 2026-03-05
+    Version         : 1.0
+    CVEs            : N/A
+    Plugin IDs      : N/A
+    STIG-ID         : WN11-CC-000345
+
+.TESTED ON
+    Date(s) Tested  : 2026-03-05
+    Tested By       : Tylesha Alexander
+    Systems Tested  : Windows 11 Pro
+    PowerShell Ver. : 5.1.26100.7705
+
+.USAGE
+    Run in an elevated PowerShell session (Run as Administrator).
+
+    Example:
+    PS C:\> .\remediation_template(STIG-ID-WN11-CC-000345).ps1
+
+.DESCRIPTION
+    STIG Requirement:
+      The Windows Remote Management (WinRM) service must not use Basic authentication.
+
+    Remediation actions:
+      - Disable WinRM service-side Basic authentication
+      - Disable WinRM client-side Basic authentication (recommended; often checked by scanners)
+      - Set policy registry keys commonly used by GPO-based enforcement
+      - Force Group Policy refresh
+
+    NOTE:
+      Disabling Basic authentication may affect legacy WinRM clients that rely on Basic auth.
+      Use Kerberos/Negotiate/Certificate auth instead.
+#>
+
+# =========================
+# YOUR CODE GOES HERE
+# =========================
+
+# Ensure script is running elevated
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $IsAdmin) {
+    Write-Host "ERROR: Please run this script in PowerShell as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "WN11-CC-000345: Disabling WinRM Basic authentication..."
+
+
+# --- Disable WinRM Basic auth via winrm (runtime configuration) ---
+
+# Service-side Basic auth (listener/server)
+winrm set winrm/config/service/auth '@{Basic="false"}' | Out-Null
+Write-Host "Set WinRM Service Auth Basic = false"
+
+# Client-side Basic auth (outbound client; often checked too)
+winrm set winrm/config/client/auth  '@{Basic="false"}' | Out-Null
+Write-Host "Set WinRM Client Auth Basic = false"
+
+
+# --- Enforce via policy registry keys (GPO-style, helps Tenable/Nessus checks) ---
+
+# Service policy path
+$SvcPolicyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service"
+if (-not (Test-Path $SvcPolicyPath)) { New-Item -Path $SvcPolicyPath -Force | Out-Null }
+
+New-ItemProperty -Path $SvcPolicyPath -Name "AllowBasic" -PropertyType DWord -Value 0 -Force | Out-Null
+Write-Host "Set Policy: HKLM...\WinRM\Service\AllowBasic = 0"
+
+# Client policy path (recommended)
+$CliPolicyPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client"
+if (-not (Test-Path $CliPolicyPath)) { New-Item -Path $CliPolicyPath -Force | Out-Null }
+
+New-ItemProperty -Path $CliPolicyPath -Name "AllowBasic" -PropertyType DWord -Value 0 -Force | Out-Null
+Write-Host "Set Policy: HKLM...\WinRM\Client\AllowBasic = 0"
+
+
+# --- Force policy refresh so scanners pick it up ---
+gpupdate /force | Out-Null
+Write-Host "Group Policy update completed."
+
+
+# --- Verification output ---
+Write-Host "`nVerification (WinRM runtime):"
+winrm get winrm/config/service/auth
+winrm get winrm/config/client/auth
+
+Write-Host "`nVerification (Registry policy):"
+cmd.exe /c 'reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Service" /v AllowBasic' 2>$null
+cmd.exe /c 'reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\WinRM\Client" /v AllowBasic' 2>$null
+
+Write-Host "`nWN11-CC-000345 remediation complete."
