@@ -1,0 +1,80 @@
+<#
+.SYNOPSIS
+    This PowerShell script remediates DISA STIG finding WN11-CC-000105 by preventing the Web Publishing
+    and Online Ordering Wizards from downloading a list of providers.
+
+.NOTES
+    Author          : Tylesha Alexander
+    LinkedIn        : linkedin.com/in/tyleshaa/
+    GitHub          : github.com/tyleshancloud7
+    Date Created    : 2026-03-05
+    Last Modified   : 2026-03-05
+    Version         : 1.0
+    CVEs            : N/A
+    Plugin IDs      : N/A
+    STIG-ID         : WN11-CC-000105
+
+.TESTED ON
+    Date(s) Tested  : 2026-03-05
+    Tested By       : Tylesha Alexander
+    Systems Tested  : Windows 11 Pro
+    PowerShell Ver. : 5.1.26100.7705
+
+.USAGE
+    Run in an elevated PowerShell session (Run as Administrator).
+
+    Example:
+    PS C:\> .\remediation_template(STIG-ID-WN11-CC-000105).ps1
+
+.DESCRIPTION
+    STIG Requirement:
+      Web publishing and online ordering wizards must be prevented from downloading a list of providers.
+
+    This corresponds to the Group Policy setting:
+      User Configuration -> Administrative Templates -> Windows Components -> Internet Explorer
+        "Prevent the wizard from downloading a list of providers"
+
+    Remediation is enforced via registry policy value:
+      HKCU\SOFTWARE\Policies\Microsoft\Internet Explorer\Internet Connection Wizard
+        DisableICWDownload (DWORD) = 1
+
+    NOTE:
+      This is a USER policy setting (HKCU). If you are scanning multiple users, you must apply it
+      for each user profile or enforce it via domain/local GPO.
+#>
+
+# =========================
+# YOUR CODE GOES HERE
+# =========================
+
+# Ensure script is running elevated (recommended for labs/scanners)
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $IsAdmin) {
+    Write-Host "WARNING: Not running as Administrator. This setting is per-user (HKCU) and may still apply, but run as Admin if possible." -ForegroundColor Yellow
+}
+
+$RegPath = "HKCU:\SOFTWARE\Policies\Microsoft\Internet Explorer\Internet Connection Wizard"
+$ValueName = "DisableICWDownload"
+$DesiredValue = 1
+
+# Create key if missing
+if (-not (Test-Path -Path $RegPath)) {
+    New-Item -Path $RegPath -Force | Out-Null
+    Write-Host "Created registry key: $RegPath"
+}
+
+# Set policy value
+New-ItemProperty -Path $RegPath -Name $ValueName -PropertyType DWord -Value $DesiredValue -Force | Out-Null
+Write-Host "WN11-CC-000105: Set $ValueName=$DesiredValue at $RegPath"
+
+# Refresh policy
+gpupdate /force | Out-Null
+Write-Host "Group Policy update completed."
+
+# Optional verification
+Write-Host "`nVerification:"
+cmd.exe /c 'reg query "HKCU\SOFTWARE\Policies\Microsoft\Internet Explorer\Internet Connection Wizard" /v DisableICWDownload' 2>$null
+
+Write-Host "`nWN11-CC-000105 remediation complete."
