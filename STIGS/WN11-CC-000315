@@ -1,0 +1,75 @@
+<#
+.SYNOPSIS
+    This PowerShell script remediates DISA STIG finding WN11-CC-000315 by disabling the Windows Installer feature
+    "Always install with elevated privileges".
+
+.NOTES
+    Author          : Tylesha Alexander
+    LinkedIn        : linkedin.com/in/tyleshaa/
+    GitHub          : github.com/tyleshancloud7
+    Date Created    : 2026-03-05
+    Last Modified   : 2026-03-05
+    Version         : 1.0
+    CVEs            : N/A
+    Plugin IDs      : N/A
+    STIG-ID         : WN11-CC-000315
+
+.TESTED ON
+    Date(s) Tested  : 2026-03-05
+    Tested By       : Tylesha Alexander
+    Systems Tested  : Windows 11 Pro
+    PowerShell Ver. : 5.1.26100.7705
+
+.USAGE
+    Run in an elevated PowerShell session (Run as Administrator).
+
+    Example:
+    PS C:\> .\remediation_template(STIG-ID-WN11-CC-000315).ps1
+
+.DESCRIPTION
+    The "Always install with elevated privileges" setting is controlled by the registry value:
+      AlwaysInstallElevated (DWORD)
+
+    This setting must be DISABLED.
+    If enabled (value = 1) in either machine or user policy, MSI packages can install with SYSTEM-level privileges.
+
+    This script ensures AlwaysInstallElevated is set to 0 in BOTH:
+      HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer
+      HKCU:\SOFTWARE\Policies\Microsoft\Windows\Installer
+#>
+
+# =========================
+# YOUR CODE GOES HERE
+# =========================
+
+# Registry paths (Machine + Current User)
+$RegistryPaths = @(
+    "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Installer",
+    "HKCU:\SOFTWARE\Policies\Microsoft\Windows\Installer"
+)
+
+# Value to enforce
+$ValueName    = "AlwaysInstallElevated"
+$DesiredValue = 0
+
+foreach ($Path in $RegistryPaths) {
+
+    # Create registry path if it doesn't exist
+    if (-not (Test-Path -Path $Path)) {
+        New-Item -Path $Path -Force | Out-Null
+    }
+
+    # Set DWORD value to 0 (disabled)
+    New-ItemProperty -Path $Path -Name $ValueName -PropertyType DWord -Value $DesiredValue -Force | Out-Null
+
+    Write-Host "WN11-CC-000315: Set $ValueName=$DesiredValue at $Path"
+}
+
+# Refresh Group Policy so compliance scanners pick up the change
+gpupdate /force | Out-Null
+Write-Host "Group Policy update completed. Remediation complete."
+
+# Optional verification output
+Write-Host "`nVerification (expected: 0x0):"
+cmd.exe /c 'reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\Installer" /v AlwaysInstallElevated' 2>$null
+cmd.exe /c 'reg query "HKCU\SOFTWARE\Policies\Microsoft\Windows\Installer" /v AlwaysInstallElevated' 2>$null
