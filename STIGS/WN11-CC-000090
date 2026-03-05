@@ -1,0 +1,91 @@
+<#
+.SYNOPSIS
+    This PowerShell script remediates DISA STIG finding WN11-CC-000090 by configuring Group Policy
+    to reprocess (apply) even if Group Policy objects have not changed.
+
+.NOTES
+    Author          : Tylesha Alexander
+    LinkedIn        : linkedin.com/in/tyleshaa/
+    GitHub          : github.com/tyleshancloud7
+    Date Created    : 2026-03-05
+    Last Modified   : 2026-03-05
+    Version         : 1.0
+    CVEs            : N/A
+    Plugin IDs      : N/A
+    STIG-ID         : WN11-CC-000090
+
+.TESTED ON
+    Date(s) Tested  : 2026-03-05
+    Tested By       : Tylesha Alexander
+    Systems Tested  : Windows 11 Pro
+    PowerShell Ver. : 5.1.26100.7705
+
+.USAGE
+    Run in an elevated PowerShell session (Run as Administrator).
+
+    Example:
+    PS C:\> .\remediation_template(STIG-ID-WN11-CC-000090).ps1
+
+.DESCRIPTION
+    STIG Requirement:
+      Group Policy objects must be reprocessed even if they have not changed.
+
+    This is enforced by enabling these policies (registry-based):
+      - "Configure user Group Policy loopback processing mode" is NOT this one.
+      - "Turn off Local Group Policy objects processing" is NOT this one.
+      - This control is about reapplying policy each refresh cycle (do not optimize away).
+
+    Remediation sets the following registry values to force reprocessing:
+      HKLM\SOFTWARE\Policies\Microsoft\Windows\Group Policy\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}
+        NoGPOListChanges = 0  (DWORD)
+
+      HKLM\SOFTWARE\Policies\Microsoft\Windows\Group Policy\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}
+        NoBackgroundPolicy = 0 (DWORD)  [Optional helper; keeps background processing enabled]
+
+    NOTE:
+      Some environments may only require NoGPOListChanges = 0.
+      This script enforces both to align with common STIG/Tenable checks.
+#>
+
+# =========================
+# YOUR CODE GOES HERE
+# =========================
+
+# Ensure script is running elevated
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $IsAdmin) {
+    Write-Host "ERROR: Please run this script in PowerShell as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+# Registry path for Group Policy processing settings (Machine)
+$RegPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\Group Policy\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}"
+
+# Values
+$Settings = @(
+    @{ Name = "NoGPOListChanges";    Value = 0 },  # 0 = reprocess even if unchanged
+    @{ Name = "NoBackgroundPolicy";  Value = 0 }   # 0 = allow background processing (recommended)
+)
+
+# Create the key if it doesn't exist
+if (-not (Test-Path -Path $RegPath)) {
+    New-Item -Path $RegPath -Force | Out-Null
+    Write-Host "Created registry key: $RegPath"
+}
+
+# Apply settings
+foreach ($s in $Settings) {
+    New-ItemProperty -Path $RegPath -Name $s.Name -PropertyType DWord -Value $s.Value -Force | Out-Null
+    Write-Host "WN11-CC-000090: Set $($s.Name)=$($s.Value) at $RegPath"
+}
+
+# Refresh Group Policy so scanners pick up the change
+gpupdate /force | Out-Null
+Write-Host "Group Policy update completed. Remediation complete."
+
+# Optional verification
+Write-Host "`nVerification:"
+cmd.exe /c 'reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\Group Policy\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}" /v NoGPOListChanges' 2>$null
+cmd.exe /c 'reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\Group Policy\{35378EAC-683F-11D2-A89A-00C04FBBCFA2}" /v NoBackgroundPolicy' 2>$null
