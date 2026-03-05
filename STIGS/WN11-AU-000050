@@ -1,0 +1,66 @@
+<#
+.SYNOPSIS
+    This PowerShell script remediates DISA STIG finding WN11-AU-000050 by enabling auditing for
+    Detailed Tracking -> Process Creation (Success).
+
+.NOTES
+    Author          : Tylesha Alexander
+    LinkedIn        : linkedin.com/in/tyleshaa/
+    GitHub          : github.com/tyleshancloud7
+    Date Created    : 2026-03-05
+    Last Modified   : 2026-03-05
+    Version         : 1.0
+    CVEs            : N/A
+    Plugin IDs      : N/A
+    STIG-ID         : WN11-AU-000050
+
+.TESTED ON
+    Date(s) Tested  : 2026-03-05
+    Tested By       : Tylesha Alexander
+    Systems Tested  : Windows 11 Pro
+    PowerShell Ver. : 5.1.26100.7705
+
+.USAGE
+    Run in an elevated PowerShell session (Run as Administrator).
+
+    Example:
+    PS C:\> .\remediation_template(STIG-ID-WN11-AU-000050).ps1
+
+.DESCRIPTION
+    STIG Requirement:
+      The system must be configured to audit Detailed Tracking - Process Creation successes.
+
+    This maps to Advanced Audit Policy:
+      Subcategory: "Process Creation"
+      Success: Enabled
+
+    Remediation uses auditpol.exe to enable Success auditing for the Process Creation subcategory.
+#>
+
+# =========================
+# YOUR CODE GOES HERE
+# =========================
+
+# Ensure script is running elevated
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $IsAdmin) {
+    Write-Host "ERROR: Please run this script in PowerShell as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+$Subcategory = "Process Creation"
+
+Write-Host "Current audit setting for '$Subcategory':"
+auditpol /get /subcategory:"$Subcategory"
+
+Write-Host "`nApplying remediation for WN11-AU-000050..."
+# Enable Success auditing for Process Creation
+auditpol /set /subcategory:"$Subcategory" /success:enable | Out-Null
+
+Write-Host "Remediation applied. Verifying..."
+Write-Host "`nExpected: Success = Enabled"
+auditpol /get /subcategory:"$Subcategory"
+
+Write-Host "`nWN11-AU-000050 remediation complete."
