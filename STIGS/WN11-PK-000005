@@ -1,0 +1,99 @@
+<#
+.SYNOPSIS
+    This PowerShell script remediates DISA STIG finding WN11-PK-000005 by ensuring DoD Root CA certificates
+    are installed in the Local Machine "Trusted Root Certification Authorities" store.
+
+.NOTES
+    Author          : Tylesha Alexander
+    LinkedIn        : linkedin.com/in/tyleshaa/
+    GitHub          : github.com/tyleshancloud7
+    Date Created    : 2026-03-05
+    Last Modified   : 2026-03-05
+    Version         : 1.0
+    CVEs            : N/A
+    Plugin IDs      : N/A
+    STIG-ID         : WN11-PK-000005
+
+.TESTED ON
+    Date(s) Tested  : 2026-03-05
+    Tested By       : Tylesha Alexander
+    Systems Tested  : Windows 11 Pro
+    PowerShell Ver. : 5.1.26100.7705
+
+.USAGE
+    1) Download the DoD Root CA certificate files (typically .cer/.crt/.p7b) from an approved source.
+    2) Place the certificate files in a folder (example: C:\Temp\DoD-Roots)
+    3) Run this script as Administrator.
+
+    Example:
+    PS C:\> .\remediation_template(STIG-ID-WN11-PK-000005).ps1 -CertSourcePath "C:\Temp\DoD-Roots"
+
+.DESCRIPTION
+    This script:
+      - Checks the LocalMachine\Root store for DoD Root CA certificates.
+      - Imports any .cer/.crt/.der/.p7b certificates found in the provided folder into LocalMachine\Root.
+      - Re-checks the store and prints installed DoD-related root certificates.
+
+    NOTE:
+      Tenable/STIG checks typically validate by Subject/Thumbprint presence. If your scan still fails,
+      confirm the required DoD Root CA thumbprints for your STIG version and network (NIPR/other).
+#>
+
+param(
+    [Parameter(Mandatory=$true)]
+    [string]$CertSourcePath
+)
+
+# =========================
+# YOUR CODE GOES HERE
+# =========================
+
+# Ensure script is running elevated
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $IsAdmin) {
+    Write-Host "ERROR: Please run this script in PowerShell as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+if (-not (Test-Path -Path $CertSourcePath)) {
+    Write-Host "ERROR: CertSourcePath not found: $CertSourcePath" -ForegroundColor Red
+    exit 1
+}
+
+$RootStore = "Cert:\LocalMachine\Root"
+
+Write-Host "Current DoD Root certificates in Trusted Root store (before import):"
+Get-ChildItem -Path $RootStore |
+    Where-Object { $_.Subject -like "*DoD*" -or $_.Issuer -like "*DoD*" } |
+    Select-Object Subject, Thumbprint, NotAfter |
+    Format-Table -AutoSize
+
+# Collect cert files
+$certFiles = Get-ChildItem -Path $CertSourcePath -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Extension -match '^\.(cer|crt|der|p7b)$' }
+
+if (-not $certFiles) {
+    Write-Host "ERROR: No certificate files (.cer/.crt/.der/.p7b) found in: $CertSourcePath" -ForegroundColor Red
+    exit 1
+}
+
+Write-Host "`nImporting certificate files into LocalMachine\Root (Trusted Root Certification Authorities)..."
+foreach ($file in $certFiles) {
+    try {
+        Import-Certificate -FilePath $file.FullName -CertStoreLocation $RootStore -ErrorAction Stop | Out-Null
+        Write-Host "Imported: $($file.Name)"
+    } catch {
+        Write-Host "FAILED to import $($file.Name): $($_.Exception.Message)" -ForegroundColor Yellow
+    }
+}
+
+Write-Host "`nDoD Root certificates in Trusted Root store (after import):"
+Get-ChildItem -Path $RootStore |
+    Where-Object { $_.Subject -like "*DoD*" -or $_.Issuer -like "*DoD*" } |
+    Select-Object Subject, Thumbprint, NotAfter |
+    Format-Table -AutoSize
+
+Write-Host "`nWN11-PK-000005 remediation complete."
+Write-Host "If Tenable still shows FAILED, compare required DoD Root CA thumbprints in your STIG check text to what's installed above."
