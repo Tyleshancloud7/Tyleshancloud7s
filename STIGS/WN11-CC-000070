@@ -1,0 +1,103 @@
+<#
+.SYNOPSIS
+    This PowerShell script remediates DISA STIG finding WN11-CC-000070 by enabling Virtualization-based Security (VBS)
+    and configuring the platform security level to Secure Boot (or Secure Boot with DMA Protection when supported).
+
+.NOTES
+    Author          : Tylesha Alexander
+    LinkedIn        : linkedin.com/in/tyleshaa/
+    GitHub          : github.com/tyleshancloud7
+    Date Created    : 2026-03-05
+    Last Modified   : 2026-03-05
+    Version         : 1.0
+    CVEs            : N/A
+    Plugin IDs      : N/A
+    STIG-ID         : WN11-CC-000070
+
+.TESTED ON
+    Date(s) Tested  : 2026-03-05
+    Tested By       : Tylesha Alexander
+    Systems Tested  : Windows 11 Pro
+    PowerShell Ver. : 5.1.26100.7705
+
+.USAGE
+    Run in an elevated PowerShell session (Run as Administrator).
+
+    Example:
+    PS C:\> .\remediation_template(STIG-ID-WN11-CC-000070).ps1
+
+.DESCRIPTION
+    STIG Requirement:
+      Virtualization-based Security (VBS) must be enabled on Windows 11 with the platform security level configured to:
+        - Secure Boot, OR
+        - Secure Boot with DMA Protection
+
+    This script enforces registry-based policy settings:
+      HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard
+        EnableVirtualizationBasedSecurity (DWORD) = 1
+        RequirePlatformSecurityFeatures    (DWORD) = 1 (Secure Boot) OR 3 (Secure Boot + DMA Protection)
+
+    IMPORTANT:
+      - This setting commonly requires hardware + firmware support (UEFI, Secure Boot, virtualization enabled in BIOS/UEFI).
+      - A reboot is typically required.
+      - Some systems do not support DMA Protection; in that case, Secure Boot (1) is acceptable.
+
+    The script defaults to Secure Boot (1). You can switch to 3 if your device supports DMA protection.
+#>
+
+# =========================
+# YOUR CODE GOES HERE
+# =========================
+
+# Ensure script is running elevated
+$IsAdmin = ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()
+).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+
+if (-not $IsAdmin) {
+    Write-Host "ERROR: Please run this script in PowerShell as Administrator." -ForegroundColor Red
+    exit 1
+}
+
+$RegPath = "HKLM:\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard"
+
+# --- Choose platform security level ---
+# 1 = Secure Boot
+# 3 = Secure Boot with DMA Protection (only if supported by hardware/firmware)
+$RequirePlatformSecurityFeatures = 1
+
+# Create key if missing
+if (-not (Test-Path -Path $RegPath)) {
+    New-Item -Path $RegPath -Force | Out-Null
+    Write-Host "Created registry key: $RegPath"
+}
+
+# Enable VBS + set platform security requirement
+New-ItemProperty -Path $RegPath -Name "EnableVirtualizationBasedSecurity" -PropertyType DWord -Value 1 -Force | Out-Null
+New-ItemProperty -Path $RegPath -Name "RequirePlatformSecurityFeatures"    -PropertyType DWord -Value $RequirePlatformSecurityFeatures -Force | Out-Null
+
+Write-Host "WN11-CC-000070: Enabled VBS (EnableVirtualizationBasedSecurity=1)"
+Write-Host "WN11-CC-000070: Set RequirePlatformSecurityFeatures=$RequirePlatformSecurityFeatures (1=Secure Boot, 3=Secure Boot+DMA)"
+
+# Apply policy refresh (helps Tenable pick up registry changes)
+gpupdate /force | Out-Null
+Write-Host "Group Policy update completed."
+
+# Verification (registry)
+Write-Host "`nVerification (Registry):"
+cmd.exe /c 'reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard" /v EnableVirtualizationBasedSecurity' 2>$null
+cmd.exe /c 'reg query "HKLM\SOFTWARE\Policies\Microsoft\Windows\DeviceGuard" /v RequirePlatformSecurityFeatures' 2>$null
+
+# Verification (runtime status) - requires hardware support and often a reboot to reflect changes
+Write-Host "`nVerification (Runtime / DeviceGuard):"
+try {
+    $dg = Get-CimInstance -ClassName Win32_DeviceGuard -Namespace root\Microsoft\Windows\DeviceGuard -ErrorAction Stop
+
+    # SecurityServicesConfigured/Running values vary; we print them for visibility.
+    Write-Host "VirtualizationBasedSecurityStatus: $($dg.VirtualizationBasedSecurityStatus)"
+    Write-Host "SecurityServicesConfigured: $($dg.SecurityServicesConfigured -join ', ')"
+    Write-Host "SecurityServicesRunning:    $($dg.SecurityServicesRunning -join ', ')"
+} catch {
+    Write-Host "Could not query Win32_DeviceGuard (may be unavailable on this system)."
+}
+
+Write-Host "`nNOTE: A reboot is typically required for VBS to fully enable and for Tenable to show PASS."
